@@ -1,61 +1,67 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import sqlite3
+import mysql.connector
 from datetime import datetime
 
 class Logging(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_file = "database.sqlite"
         self.setup_db()
 
+    def get_connection(self):
+        return mysql.connector.connect(
+            host="13.212.150.216",
+            port=3306,
+            user="simpleprog",
+            password="jf83hj032fjkldsa",
+            database="simpleprog_db"
+        )
+
     def setup_db(self):
-        conn = sqlite3.connect(self.db_file)
+        conn = self.get_connection()
         c = conn.cursor()
-        # Ensure config table exists
-        c.execute('''CREATE TABLE IF NOT EXISTS config 
-                     (guild_id TEXT, key TEXT, value TEXT, 
-                     PRIMARY KEY (guild_id, key))''')
-        # Create table for actual logs (for the website UI)
-        c.execute('''CREATE TABLE IF NOT EXISTS logs 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                     guild_id TEXT, log_type TEXT, description TEXT, timestamp TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS serenity_config 
+                     (guild_id VARCHAR(255), config_key VARCHAR(255), config_value TEXT, 
+                     PRIMARY KEY (guild_id, config_key))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS serenity_logs 
+                     (id BIGINT PRIMARY KEY AUTO_INCREMENT, 
+                     guild_id VARCHAR(255), log_type VARCHAR(255), description TEXT, timestamp TEXT)''')
         conn.commit()
         conn.close()
 
     def get_config(self, guild_id, key):
-        conn = sqlite3.connect(self.db_file)
+        conn = self.get_connection()
         c = conn.cursor()
-        c.execute("SELECT value FROM config WHERE guild_id=? AND key=?", (str(guild_id), f"log_{key}"))
+        c.execute("SELECT config_value FROM serenity_config WHERE guild_id=%s AND config_key=%s", (str(guild_id), f"log_{key}"))
         result = c.fetchone()
         conn.close()
         return result[0] if result else None
 
     def set_config(self, guild_id, key, value):
-        conn = sqlite3.connect(self.db_file)
+        conn = self.get_connection()
         c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)", (str(guild_id), f"log_{key}", str(value)))
+        c.execute("REPLACE INTO serenity_config (guild_id, config_key, config_value) VALUES (%s, %s, %s)", (str(guild_id), f"log_{key}", str(value)))
         conn.commit()
         conn.close()
 
     def save_log_to_db(self, guild_id, log_type, description):
-        conn = sqlite3.connect(self.db_file)
+        conn = self.get_connection()
         c = conn.cursor()
         timestamp = datetime.now().isoformat()
-        c.execute("INSERT INTO logs (guild_id, log_type, description, timestamp) VALUES (?, ?, ?, ?)", 
+        c.execute("INSERT INTO serenity_logs (guild_id, log_type, description, timestamp) VALUES (%s, %s, %s, %s)", 
                   (str(guild_id), log_type, description, timestamp))
         conn.commit()
         conn.close()
 
-    def create_embed(self, title, description, color):
-        return discord.Embed(title=title, description=description, color=color, timestamp=datetime.now())
+    def create_base_embed(self, color, user: discord.Member | discord.User = None):
+        embed = discord.Embed(color=color, timestamp=datetime.now())
+        if user:
+            embed.set_author(name=f"{user}", icon_url=user.display_avatar.url)
+        return embed
 
     async def send_log(self, guild, log_type, embed, raw_description=""):
-        # Save to DB for website UI
-        self.save_log_to_db(guild.id, log_type, raw_description or embed.description)
-        
-        # Send to Discord channel if configured
+        self.save_log_to_db(guild.id, log_type, raw_description or embed.description or embed.title or "No description")
         channel_id = self.get_config(guild.id, log_type)
         if channel_id:
             channel = self.bot.get_channel(int(channel_id))
@@ -77,109 +83,190 @@ class Logging(commands.Cog):
     ])
     async def set_log_channel(self, interaction: discord.Interaction, log_type: app_commands.Choice[str], channel: discord.TextChannel):
         self.set_config(interaction.guild_id, log_type.value, channel.id)
-        await interaction.response.send_message(embed=self.create_embed("Logging Setup", f"{log_type.name} log channel set to {channel.mention}", discord.Color.green()))
+        embed = self.create_base_embed(discord.Color.green(), interaction.user)
+        embed.title = "Logging Setup"
+        embed.description = f"Log channel for `{log_type.name}` set to {channel.mention}"
+        await interaction.response.send_message(embed=embed)
 
     # --- Message Logging ---
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if message.author.bot or not message.guild: return
-        desc = f"**Author:** {message.author.mention}\n**Channel:** {message.channel.mention}\n**Content:** {message.content or 'No text'}"
-        embed = self.create_embed("🗑️ Message Deleted", desc, discord.Color.red())
-        await self.send_log(message.guild, "messages", embed, f"Deleted by {message.author} in {message.channel.name}: {message.content}")
+        embed = self.create_base_embed(discord.Color.red(), message.author)
+        embed.title = f"Message deleted in #{message.channel.name}"
+        # We don't have a jump URL for deleted messages, so we use a safe fallback or nothing
+        embed.description = f"**Content:**\n{message.content or 'No content'}"
+        embed.set_footer(text=f"ID: {message.author.id}")
+        await self.send_log(message.guild, "messages", embed)
 
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages):
         if not messages: return
         guild = messages[0].guild
-        desc = f"**Channel:** {messages[0].channel.mention}\n**Amount:** {len(messages)} messages"
-        embed = self.create_embed("🗑️ Bulk Messages Deleted", desc, discord.Color.red())
-        await self.send_log(guild, "messages", embed, f"Bulk deleted {len(messages)} messages in {messages[0].channel.name}")
+        embed = self.create_base_embed(discord.Color.red())
+        embed.title = f"Bulk Message Deletion in #{messages[0].channel.name}"
+        embed.description = f"**Amount:** `{len(messages)}` messages"
+        await self.send_log(guild, "messages", embed)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         if before.author.bot or not before.guild or before.content == after.content: return
-        desc = f"**Author:** {before.author.mention}\n**Channel:** {before.channel.mention}\n**Before:** {before.content}\n**After:** {after.content}\n[Jump to message]({after.jump_url})"
-        embed = self.create_embed("📝 Message Edited", desc, discord.Color.orange())
-        await self.send_log(before.guild, "messages", embed, f"Edited by {before.author} in {before.channel.name}. Before: {before.content} | After: {after.content}")
+        embed = self.create_base_embed(discord.Color.blue(), before.author)
+        # Applying the "link" style to the title
+        embed.title = f"Message edited in #{before.channel.name}"
+        embed.url = after.jump_url 
+        embed.description = (
+            f"**Before:** {before.content}\n"
+            f"**After:** {after.content}"
+        )
+        embed.set_footer(text=f"ID: {before.author.id}")
+        await self.send_log(before.guild, "messages", embed)
 
     # --- Member Logging ---
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        embed = self.create_embed("📥 Member Joined", f"{member.mention} ({member.id})", discord.Color.green())
-        embed.set_thumbnail(url=member.display_avatar.url)
-        await self.send_log(member.guild, "members", embed, f"{member} joined the server")
+        embed = self.create_base_embed(discord.Color.green(), member)
+        embed.title = "Member Joined"
+        embed.description = f"**Account Created:** <t:{int(member.created_at.timestamp())}:R>"
+        embed.set_footer(text=f"ID: {member.id}")
+        await self.send_log(member.guild, "members", embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
-        embed = self.create_embed("📤 Member Left", f"{member.mention} ({member.id})", discord.Color.red())
-        embed.set_thumbnail(url=member.display_avatar.url)
-        await self.send_log(member.guild, "members", embed, f"{member} left the server")
+        embed = self.create_base_embed(discord.Color.red(), member)
+        embed.title = "Member Left"
+        embed.set_footer(text=f"ID: {member.id}")
+        await self.send_log(member.guild, "members", embed)
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
-        embed = self.create_embed("🔨 Member Banned", f"{user.mention} ({user.id})", discord.Color.dark_red())
-        await self.send_log(guild, "mod", embed, f"{user} was banned from the server")
+        embed = self.create_base_embed(discord.Color.dark_red(), user)
+        embed.title = "Member Banned"
+        embed.set_footer(text=f"ID: {user.id}")
+        await self.send_log(guild, "mod", embed)
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
-        embed = self.create_embed("🔓 Member Unbanned", f"{user.mention} ({user.id})", discord.Color.green())
-        await self.send_log(guild, "mod", embed, f"{user} was unbanned from the server")
+        embed = self.create_base_embed(discord.Color.green(), user)
+        embed.title = "Member Unbanned"
+        embed.set_footer(text=f"ID: {user.id}")
+        await self.send_log(guild, "mod", embed)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.nick != after.nick:
-            desc = f"**Member:** {after.mention}\n**Before:** {before.nick or before.name}\n**After:** {after.nick or after.name}"
-            embed = self.create_embed("👤 Nickname Changed", desc, discord.Color.blue())
-            await self.send_log(before.guild, "members", embed, f"{after} changed nickname from {before.nick} to {after.nick}")
+            embed = self.create_base_embed(discord.Color.blue(), after)
+            embed.title = "Nickname Changed"
+            embed.description = f"**Before:** `{before.nick or before.name}`\n**After:** `{after.nick or after.name}`"
+            embed.set_footer(text=f"ID: {after.id}")
+            await self.send_log(before.guild, "members", embed)
+            
         if before.roles != after.roles:
             added = [r for r in after.roles if r not in before.roles]
             removed = [r for r in before.roles if r not in after.roles]
             if added or removed:
-                desc = f"**Member:** {after.mention}\n"
-                log_raw = f"{after}'s roles updated. "
-                if added: 
-                    desc += f"**Roles Added:** {', '.join(r.mention for r in added)}\n"
-                    log_raw += f"Added: {[r.name for r in added]}. "
-                if removed: 
-                    desc += f"**Roles Removed:** {', '.join(r.mention for r in removed)}"
-                    log_raw += f"Removed: {[r.name for r in removed]}."
-                embed = self.create_embed("🎭 Roles Updated", desc, discord.Color.blue())
-                await self.send_log(before.guild, "roles", embed, log_raw)
+                embed = self.create_base_embed(discord.Color.blue(), after)
+                embed.title = "Roles Updated"
+                if added: embed.add_field(name="Roles Added", value=", ".join(r.mention for r in added), inline=False)
+                if removed: embed.add_field(name="Roles Removed", value=", ".join(r.mention for r in removed), inline=False)
+                embed.set_footer(text=f"ID: {after.id}")
+                await self.send_log(before.guild, "roles", embed)
+
+        if before.timed_out_until != after.timed_out_until:
+            embed = self.create_base_embed(discord.Color.orange(), after)
+            if after.timed_out_until:
+                embed.title = "Member Timed Out"
+                embed.description = f"**Until:** <t:{int(after.timed_out_until.timestamp())}:f>"
+            else:
+                embed.title = "Timeout Removed"
+                embed.description = "**Status:** Timeout removed."
+            embed.set_footer(text=f"ID: {after.id}")
+            await self.send_log(before.guild, "mod", embed)
 
     # --- Role Logging ---
     @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role):
-        embed = self.create_embed("➕ Role Created", f"**Role:** {role.mention}", discord.Color.green())
-        await self.send_log(role.guild, "roles", embed, f"Role {role.name} created")
+        embed = self.create_base_embed(discord.Color.green())
+        embed.title = f"Role Created: `{role.name}`"
+        embed.set_footer(text=f"ID: {role.id}")
+        await self.send_log(role.guild, "roles", embed)
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role):
-        embed = self.create_embed("➖ Role Deleted", f"**Role:** {role.name}", discord.Color.red())
-        await self.send_log(role.guild, "roles", embed, f"Role {role.name} deleted")
+        embed = self.create_base_embed(discord.Color.red())
+        embed.title = f"Role Deleted: `{role.name}`"
+        embed.set_footer(text=f"ID: {role.id}")
+        await self.send_log(role.guild, "roles", embed)
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
+        if before.name != after.name or before.color != after.color:
+            embed = self.create_base_embed(discord.Color.blue())
+            embed.title = f"Role Updated: `{after.name}`"
+            if before.name != after.name:
+                embed.add_field(name="Old Name", value=f"`{before.name}`", inline=True)
+                embed.add_field(name="New Name", value=f"`{after.name}`", inline=True)
+            if before.color != after.color:
+                embed.add_field(name="Old Color", value=f"`{before.color}`", inline=True)
+                embed.add_field(name="New Color", value=f"`{after.color}`", inline=True)
+            embed.set_footer(text=f"ID: {after.id}")
+            await self.send_log(before.guild, "roles", embed)
 
     # --- Voice Logging ---
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if before.channel is None and after.channel is not None:
-            embed = self.create_embed("🎙️ Voice Joined", f"{member.mention} joined {after.channel.mention}", discord.Color.green())
-            await self.send_log(member.guild, "voice", embed, f"{member} joined voice channel {after.channel.name}")
+            embed = self.create_base_embed(discord.Color.green(), member)
+            embed.title = "Voice Joined"
+            embed.description = f"**Channel:** {after.channel.mention}"
+            embed.set_footer(text=f"ID: {member.id}")
+            await self.send_log(member.guild, "voice", embed)
         elif before.channel is not None and after.channel is None:
-            embed = self.create_embed("🚪 Voice Left", f"{member.mention} left {before.channel.mention}", discord.Color.red())
-            await self.send_log(member.guild, "voice", embed, f"{member} left voice channel {before.channel.name}")
-        elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
-            embed = self.create_embed("🔀 Voice Moved", f"{member.mention} moved from {before.channel.mention} to {after.channel.mention}", discord.Color.blue())
-            await self.send_log(member.guild, "voice", embed, f"{member} moved from {before.channel.name} to {after.channel.name}")
+            embed = self.create_base_embed(discord.Color.red(), member)
+            embed.title = "Voice Left"
+            embed.description = f"**Channel:** {before.channel.mention}"
+            embed.set_footer(text=f"ID: {member.id}")
+            await self.send_log(member.guild, "voice", embed)
+        elif before.channel and after.channel and before.channel.id != after.channel.id:
+            embed = self.create_base_embed(discord.Color.blue(), member)
+            embed.title = "Voice Moved"
+            embed.description = f"**From:** {before.channel.mention}\n**To:** {after.channel.mention}"
+            embed.set_footer(text=f"ID: {member.id}")
+            await self.send_log(member.guild, "voice", embed)
 
-    # --- Server Logging ---
+    # --- Server/Channel Logging ---
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
-        embed = self.create_embed("📁 Channel Created", f"Channel {channel.mention} created.", discord.Color.green())
-        await self.send_log(channel.guild, "server", embed, f"Channel {channel.name} created")
+        embed = self.create_base_embed(discord.Color.green())
+        embed.title = f"Channel Created: `{channel.name}`"
+        embed.description = f"**Type:** `{channel.type}`"
+        embed.set_footer(text=f"ID: {channel.id}")
+        await self.send_log(channel.guild, "server", embed)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
-        embed = self.create_embed("🗑️ Channel Deleted", f"Channel **{channel.name}** deleted.", discord.Color.red())
-        await self.send_log(channel.guild, "server", embed, f"Channel {channel.name} deleted")
+        embed = self.create_base_embed(discord.Color.red())
+        embed.title = f"Channel Deleted: `{channel.name}`"
+        embed.set_footer(text=f"ID: {channel.id}")
+        await self.send_log(channel.guild, "server", embed)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+        if before.name != after.name:
+            embed = self.create_base_embed(discord.Color.blue())
+            embed.title = f"Channel Renamed: `{after.name}`"
+            embed.description = f"**Old Name:** `{before.name}`"
+            embed.set_footer(text=f"ID: {after.id}")
+            await self.send_log(before.guild, "server", embed)
+
+    @commands.Cog.listener()
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
+        if before.name != after.name:
+            embed = self.create_base_embed(discord.Color.blue())
+            embed.title = "Server Renamed"
+            embed.description = f"**Old Name:** `{before.name}`\n**New Name:** `{after.name}`"
+            embed.set_footer(text=f"Guild ID: {after.id}")
+            await self.send_log(before, "server", embed)
 
 async def setup(bot):
     await bot.add_cog(Logging(bot))

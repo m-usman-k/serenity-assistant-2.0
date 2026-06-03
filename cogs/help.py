@@ -8,103 +8,127 @@ class HelpSelect(discord.ui.Select):
         options = []
         if is_admin:
             options.extend([
-                discord.SelectOption(label="Moderation Commands", description="Commands for managing the server (Admin)", emoji="🛡️"),
-                discord.SelectOption(label="Logging Commands", description="Configure server logging (Admin)", emoji="📋"),
-                discord.SelectOption(label="Utility Commands", description="Useful utility commands (Admin)", emoji="🛠️"),
-                discord.SelectOption(label="Welcome & Goodbye", description="Setup welcome/goodbye (Admin)", emoji="👋"),
-                discord.SelectOption(label="Automod & Admin Economy", description="Automod and economy admin", emoji="⚙️"),
+                discord.SelectOption(label="Moderation", description="Kick, ban, timeout, warnings, role management", emoji="🛡️"),
+                discord.SelectOption(label="Logging", description="Configure server event logging", emoji="📋"),
+                discord.SelectOption(label="Sticky Messages", description="Manage persistent sticky messages", emoji="📌"),
+                discord.SelectOption(label="Reaction Roles", description="Button and dropdown role panels", emoji="🎭"),
+                discord.SelectOption(label="Welcome & Goodbye", description="Setup join/leave messages and cards", emoji="👋"),
+                discord.SelectOption(label="Automod", description="Automatic word filtering", emoji="⚙️"),
             ])
         options.extend([
-            discord.SelectOption(label="Leveling Commands", description="XP and Leveling system", emoji="📈"),
-            discord.SelectOption(label="Economy Commands", description="Money and economy system", emoji="💰"),
-            discord.SelectOption(label="AFK Commands", description="Set and clear AFK status", emoji="💤")
+            discord.SelectOption(label="AFK", description="Set and manage your AFK status", emoji="💤")
         ])
-        
-        super().__init__(placeholder="Choose a category to view commands...", min_values=1, max_values=1, options=options)
+
+        super().__init__(placeholder="Choose a category...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         category = self.values[0]
         embed = discord.Embed(title=category, color=discord.Color.blue())
-        embed.set_footer(text="The Urbex Factory | Modern Urbex Community", icon_url="https://cdn.discordapp.com/embed/avatars/0.png")
+        embed.set_footer(text="Serenity Assistant 2.0", icon_url=self.bot.user.display_avatar.url)
 
-        if category == "Moderation Commands":
+        if category == "Moderation":
             embed.description = (
-                "**/lock**\n┗ Lock a channel\n\n"
-                "**/unlock**\n┗ Unlock a channel\n\n"
-                "**/purge**\n┗ Purge messages in a channel\n\n"
-                "**/kick**\n┗ Kick a member from the server\n\n"
-                "**/ban**\n┗ Ban a member from the server\n\n"
-                "**/timeout**\n┗ Timeout a member\n\n"
-                "**/untimeout**\n┗ Remove timeout from a member\n\n"
-                "**/warn**\n┗ Issue a warning to a member\n\n"
-                "**/warnings**\n┗ Check a member's warnings\n\n"
-                "**/clear_warnings**\n┗ Clear all warnings for a member\n\n"
-                "**/role add**\n┗ Add a role to a user\n\n"
-                "**/role remove**\n┗ Remove a role from a user\n\n"
-                "**How to Setup Moderation:**\n"
-                "`Moderation commands work automatically based on Discord permissions. Make sure the bot's role is higher than the roles it is trying to manage!`"
+                "**/lock** `[channel]`\n┗ Prevent members from sending messages in a channel\n\n"
+                "**/unlock** `[channel]`\n┗ Re-allow messages in a locked channel\n\n"
+                "**/purge** `<amount>`\n┗ Bulk delete messages in the current channel\n\n"
+                "**/kick** `<member>` `[reason]`\n┗ Kick a member from the server\n\n"
+                "**/ban** `<member>` `[reason]`\n┗ Permanently ban a member\n\n"
+                "**/timeout** `<member>` `<minutes>` `[reason]`\n┗ Temporarily mute a member\n\n"
+                "**/untimeout** `<member>`\n┗ Remove an active timeout\n\n"
+                "**/warn** `<member>` `<reason>`\n┗ Issue a warning (logged to DB, DMs the user)\n\n"
+                "**/warnings** `<member>`\n┗ View all warnings for a member\n\n"
+                "**/clear_warnings** `<member>`\n┗ Wipe all warnings for a member\n\n"
+                "**/role add** `<member>` `<role>`\n┗ Add a role to a member\n\n"
+                "**/role remove** `<member>` `<role>`\n┗ Remove a role from a member\n\n"
+                "**Setup:**\n"
+                "```Make sure the bot's role is positioned ABOVE the\n"
+                "roles it needs to manage in Server Settings > Roles.```"
             )
-        elif category == "Automod & Admin Economy":
+
+        elif category == "Automod":
             embed.description = (
-                "**/automod add_banned_word**\n┗ Add a word to the banned words filter\n\n"
-                "**/automod remove_banned_word**\n┗ Remove a word from the filter\n\n"
-                "**/economy_admin add_money**\n┗ Add money to a user's balance\n\n"
-                "**/economy_admin remove_money**\n┗ Remove money from a user's balance\n\n"
-                "**How to Setup Automod:**\n"
-                "`Use /automod add_banned_word <word> to start filtering bad words. The bot will automatically delete messages containing these words and DM the user.`"
+                "**/automod add_banned_word** `<word>`\n┗ Add a word to the filter. Messages containing it will be auto-deleted\n\n"
+                "**/automod remove_banned_word** `<word>`\n┗ Remove a word from the filter\n\n"
+                "**How it works:**\n"
+                "```When a message contains a banned word:\n"
+                "  1. The message is immediately deleted\n"
+                "  2. The user is DM'd with the matched word\n\n"
+                "Tip: words are matched case-insensitively and\n"
+                "as substrings (e.g. 'bad' matches 'badword').```"
             )
-        elif category == "Utility Commands":
+
+        elif category == "Sticky Messages":
             embed.description = (
-                "**/sticky_add**\n┗ Set a sticky message for this channel\n\n"
-                "**/sticky_remove**\n┗ Remove the sticky message from this channel\n\n"
-                "**/reaction_role**\n┗ Set up a button reaction role\n\n"
-                "**How to Setup Reaction Roles:**\n"
-                "`Use /reaction_role <role> <message> to create a button that users can click to get or remove a specific role.`"
+                "**/sticky add** `[is_embed]`\n┗ Create or update the sticky in the current channel. `is_embed` toggles between embed and normal text.\n\n"
+                "**/sticky remove**\n┗ Delete the sticky message from the current channel\n\n"
+                "**/sticky enable**\n┗ Re-enable and re-post the sticky in this channel\n\n"
+                "**/sticky disable**\n┗ Pause the sticky in this channel without deleting it\n\n"
+                "**/sticky cooldown** `<messages>`\n┗ Set how many messages pass before re-posting (current channel)\n\n"
+                "**/sticky list**\n┗ List all sticky messages active across the server\n\n"
+                "**/sticky preview**\n┗ Preview the sticky for the current channel\n\n"
+                "**Note:**\n"
+                "```Each channel now supports exactly ONE sticky message.\n"
+                "Commands automatically detect the sticky in your channel.```"
             )
-        elif category == "AFK Commands":
+
+        elif category == "Reaction Roles":
             embed.description = (
-                "**/afk_set**\n┗ Set your AFK status\n\n"
-                "**/afk_clear**\n┗ Clear your AFK status\n\n"
+                "**/rr create** `<title>` `[description]` `[mode]` `[exclusive]`\n┗ Create a new role panel\n\n"
+                "**/rr add_role** `<id>` `<role>` `[label]` `[emoji]` `[style]`\n┗ Add a role entry to a panel\n\n"
+                "**/rr remove_role** `<id>` `<role>`\n┗ Remove a role from a panel\n\n"
+                "**/rr post** `<id>` `[channel]`\n┗ Send the panel to a channel (run again to refresh)\n\n"
+                "**/rr edit** `<id>` `[title]` `[description]` `[exclusive]`\n┗ Update a panel's settings\n\n"
+                "**/rr list**\n┗ List all panels in the server\n\n"
+                "**/rr delete** `<id>`\n┗ Delete a panel and its Discord message\n\n"
+                "**Setup:**\n"
+                "```1. /rr create <title> [mode: button/dropdown] [exclusive: true/false]\n"
+                "2. /rr add_role <panel_id> <role> [label] [emoji] [style]\n"
+                "3. /rr post <panel_id> [channel]```"
             )
-        elif category == "Logging Commands":
+
+        elif category == "Logging":
             embed.description = (
-                "**/set_log_channel**\n┗ Set the channel for specific logging types\n\n"
-                "**How to Setup Logging:**\n"
-                "`Use /set_log_channel to bind channels to different events. You can set channels for 'Messages' (edits/deletes), 'Members' (joins/leaves), 'Server' (channel creates/deletes), 'Voice' (joins/moves), 'Roles', and 'Moderation' (bans/kicks).`"
+                "**/set_log_channel** `<type>` `<channel>`\n┗ Bind a channel to a specific log type\n\n"
+                "**Log Types:**\n"
+                "```messages, members, server, voice, roles, mod```\n"
+                "**All logs are also saved to the SQLite database** for future web dashboard use."
             )
-        elif category == "Leveling Commands":
-            embed.description = (
-                "**/rank**\n┗ Check your or someone else's current level and XP\n\n"
-                "**/leaderboard**\n┗ View the top members with the most XP\n\n"
-                "**/leveling_setup set_channel** (Admin)\n┗ Set the channel for level up messages\n\n"
-                "**How to Setup Leveling:**\n"
-                "`Users automatically earn random XP between 15 and 25 per message. Use /leveling_setup set_channel <channel> to define where level up notifications should be sent. If not set, it sends in the current channel.`"
-            )
-        elif category == "Economy Commands":
-            embed.description = (
-                "**/balance**\n┗ Check your or someone else's wallet balance\n\n"
-                "**/work**\n┗ Work to earn some coins (1 hour cooldown)\n\n"
-                "**/pay**\n┗ Pay coins to another user\n\n"
-                "**How to Setup Economy:**\n"
-                "`Economy requires no setup. Users can immediately use /work to start earning coins. Admins can manage balances using /economy_admin commands.`"
-            )
+
         elif category == "Welcome & Goodbye":
             embed.description = (
-                "**/welcome_setup set_channel**\n┗ Set the channel for welcome messages\n\n"
-                "**/welcome_setup set_message**\n┗ Customize the welcome message text\n\n"
-                "**/welcome_setup set_goodbye_channel**\n┗ Set the channel for goodbye messages\n\n"
-                "**How to Setup Welcome Messages:**\n"
-                "`1. Use /welcome_setup set_channel <channel>`\n"
-                "`2. Use /welcome_setup set_message <message>`\n"
-                "`Supported variables for message: {user.mention}, {user.name}, {server}`"
+                "**/welcome set_channel** `<channel>`\n┗ Set the channel for welcome messages\n\n"
+                "**/welcome set_goodbye_channel** `<channel>`\n┗ Set the channel for goodbye messages\n\n"
+                "**/welcome set_message**\n┗ Modal to write the welcome message text\n\n"
+                "**/welcome set_goodbye_message**\n┗ Modal to write the goodbye message text\n\n"
+                "**/welcome set_background** `<image>`\n┗ Upload a custom image for welcome cards\n\n"
+                "**/welcome set_goodbye_background** `<image>`\n┗ Upload a custom image for goodbye cards\n\n"
+                "**/welcome reset_background** `<type>`\n┗ Reset background to the default gradient\n\n"
+                "**/welcome preview** `<type>`\n┗ Preview the card and message\n\n"
+                "**/welcome variables**\n┗ List all supported message variables\n\n"
+                "**/welcome disable** `<type>`\n┗ Disable welcome or goodbye messages"
+            )
+
+        elif category == "AFK":
+            embed.description = (
+                "**/afk_set** `[reason]`\n┗ Mark yourself as AFK with an optional reason\n\n"
+                "**/afk_clear**\n┗ Clear your AFK status manually\n\n"
+                "**How it works:**\n"
+                "```When you are AFK and someone mentions you, the bot\n"
+                "will reply with your AFK reason.\n\n"
+                "Clean Mode: All AFK-related notifications are\n"
+                "automatically deleted after 5 seconds.\n\n"
+                "Your AFK is automatically cleared the next time\n"
+                "you send a message in any channel.```"
             )
 
         await interaction.response.edit_message(embed=embed, view=self.view)
+
 
 class HelpView(discord.ui.View):
     def __init__(self, bot: commands.Bot, is_admin: bool):
         super().__init__()
         self.add_item(HelpSelect(bot, is_admin))
+
 
 class Help(commands.Cog):
     def __init__(self, bot):
@@ -114,14 +138,15 @@ class Help(commands.Cog):
     async def help_command(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="Help Menu",
-            description="Please select a category from the dropdown below to view its commands.",
+            description="Select a category from the dropdown below to view commands and setup guides.",
             color=discord.Color.blue()
         )
-        embed.set_footer(text="The Urbex Factory | Modern Urbex Community", icon_url="https://cdn.discordapp.com/embed/avatars/0.png")
-        
+        embed.set_footer(text="Serenity Assistant 2.0", icon_url=self.bot.user.display_avatar.url)
+
         is_admin = interaction.user.guild_permissions.administrator if interaction.guild else False
         view = HelpView(self.bot, is_admin)
         await interaction.response.send_message(embed=embed, view=view)
+
 
 async def setup(bot):
     await bot.add_cog(Help(bot))
