@@ -7,28 +7,9 @@ from datetime import datetime
 class Logging(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.setup_db()
 
     def get_connection(self):
-        return mysql.connector.connect(
-            host="13.212.150.216",
-            port=3306,
-            user="simpleprog",
-            password="jf83hj032fjkldsa",
-            database="simpleprog_db"
-        )
-
-    def setup_db(self):
-        conn = self.get_connection()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_config 
-                     (guild_id VARCHAR(255), config_key VARCHAR(255), config_value TEXT, 
-                     PRIMARY KEY (guild_id, config_key))''')
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_logs 
-                     (id BIGINT PRIMARY KEY AUTO_INCREMENT, 
-                     guild_id VARCHAR(255), log_type VARCHAR(255), description TEXT, timestamp TEXT)''')
-        conn.commit()
-        conn.close()
+        return self.bot.db.get_connection()
 
     def get_config(self, guild_id, key):
         conn = self.get_connection()

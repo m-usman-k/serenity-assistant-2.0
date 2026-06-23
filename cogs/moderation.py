@@ -7,27 +7,9 @@ from datetime import datetime, timedelta
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.setup_db()
 
     def get_connection(self):
-        return mysql.connector.connect(
-            host="13.212.150.216",
-            port=3306,
-            user="simpleprog",
-            password="jf83hj032fjkldsa",
-            database="simpleprog_db"
-        )
-
-    def setup_db(self):
-        conn = self.get_connection()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_warnings 
-                     (id BIGINT PRIMARY KEY AUTO_INCREMENT, 
-                     guild_id VARCHAR(255), user_id VARCHAR(255), moderator VARCHAR(255), reason TEXT, timestamp TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_banned_words 
-                     (guild_id VARCHAR(255), word VARCHAR(255), PRIMARY KEY (guild_id, word))''')
-        conn.commit()
-        conn.close()
+        return self.bot.db.get_connection()
 
     def add_warning(self, guild_id, user_id, moderator, reason):
         conn = self.get_connection()

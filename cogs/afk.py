@@ -6,25 +6,9 @@ import mysql.connector
 class AFK(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.setup_db()
 
     def get_connection(self):
-        return mysql.connector.connect(
-            host="13.212.150.216",
-            port=3306,
-            user="simpleprog",
-            password="jf83hj032fjkldsa",
-            database="simpleprog_db"
-        )
-
-    def setup_db(self):
-        conn = self.get_connection()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_afk 
-                     (guild_id VARCHAR(255), user_id VARCHAR(255), reason TEXT, 
-                     PRIMARY KEY (guild_id, user_id))''')
-        conn.commit()
-        conn.close()
+        return self.bot.db.get_connection()
 
     def set_afk(self, guild_id, user_id, reason):
         conn = self.get_connection()

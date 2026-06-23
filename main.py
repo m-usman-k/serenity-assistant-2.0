@@ -1,6 +1,9 @@
 import discord
 from discord.ext import commands
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from shared_database import SharedDatabase
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +15,7 @@ class MyBot(commands.Bot):
             intents=discord.Intents.all(),
             help_command=None
         )
+        self.db = SharedDatabase()
 
     async def setup_hook(self):
         for filename in os.listdir('./cogs'):

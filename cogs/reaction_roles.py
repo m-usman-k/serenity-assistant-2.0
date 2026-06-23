@@ -3,14 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import mysql.connector
 
-def get_db():
-    return mysql.connector.connect(
-        host="13.212.150.216",
-        port=3306,
-        user="simpleprog",
-        password="jf83hj032fjkldsa",
-        database="simpleprog_db"
-    )
+
 
 # ──────────────────────────────────────────────
 # Persistent Button View
@@ -107,7 +100,7 @@ async def handle_role_toggle(interaction: discord.Interaction, role_id: int, pan
     try:
         if exclusive:
             # Remove all other roles in this panel first
-            conn = get_db()
+            conn = interaction.client.db.get_connection()
             c = conn.cursor()
             c.execute("SELECT role_id FROM serenity_rr_entries WHERE panel_id=%s", (panel_id,))
             all_role_ids = [int(r[0]) for r in c.fetchall()]
@@ -161,36 +154,9 @@ def build_panel_embed(title: str, description: str, entries: list, mode: str, ex
 class ReactionRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.setup_db()
-
-    def setup_db(self):
-        conn = get_db()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_rr_panels (
-            id          BIGINT PRIMARY KEY AUTO_INCREMENT,
-            guild_id    VARCHAR(255),
-            channel_id  VARCHAR(255),
-            message_id  VARCHAR(255),
-            title       TEXT,
-            description TEXT,
-            mode        VARCHAR(255) DEFAULT 'button',
-            exclusive   INT DEFAULT 0,
-            max_roles   INT DEFAULT 25
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_rr_entries (
-            id       BIGINT PRIMARY KEY AUTO_INCREMENT,
-            panel_id BIGINT,
-            role_id  VARCHAR(255),
-            label    VARCHAR(255),
-            emoji    VARCHAR(255),
-            style    VARCHAR(255) DEFAULT 'primary',
-            FOREIGN KEY (panel_id) REFERENCES serenity_rr_panels(id) ON DELETE CASCADE
-        )''')
-        conn.commit()
-        conn.close()
 
     def _get_entries(self, panel_id: int) -> list:
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT role_id, label, emoji, style FROM serenity_rr_entries WHERE panel_id=%s", (panel_id,))
         entries = [(int(r[0]), r[1], r[2], r[3]) for r in c.fetchall()]
@@ -198,7 +164,7 @@ class ReactionRoles(commands.Cog):
         return entries
 
     def _get_panel(self, panel_id: int, guild_id: int):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT id, guild_id, channel_id, message_id, title, description, mode, exclusive, max_roles FROM serenity_rr_panels WHERE id=%s AND guild_id=%s", (panel_id, str(guild_id)))
         row = c.fetchone()
@@ -212,7 +178,7 @@ class ReactionRoles(commands.Cog):
 
     def restore_views(self):
         """Re-register all persistent views after bot restarts."""
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT id, mode, exclusive, max_roles FROM serenity_rr_panels")
         panels = c.fetchall()
@@ -251,7 +217,7 @@ class ReactionRoles(commands.Cog):
                         exclusive: bool = False,
                         max_roles: int = 25):
         mode_val = mode.value if mode else "button"
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT INTO serenity_rr_panels (guild_id, title, description, mode, exclusive, max_roles) VALUES (%s, %s, %s, %s, %s, %s)",
@@ -309,7 +275,7 @@ class ReactionRoles(commands.Cog):
         label_val = label or role.name
         style_val = style.value if style else "primary"
 
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT INTO serenity_rr_entries (panel_id, role_id, label, emoji, style) VALUES (%s, %s, %s, %s, %s)",
@@ -331,7 +297,7 @@ class ReactionRoles(commands.Cog):
             await interaction.response.send_message(f"❌ Panel `#{panel_id}` not found.", ephemeral=True)
             return
 
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM serenity_rr_entries WHERE panel_id=%s AND role_id=%s", (panel_id, str(role.id)))
         conn.commit()
@@ -380,7 +346,7 @@ class ReactionRoles(commands.Cog):
         # Send new message
         msg = await target.send(embed=embed, view=view)
 
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("UPDATE serenity_rr_panels SET channel_id=%s, message_id=%s WHERE id=%s", (str(target.id), str(msg.id), panel_id))
         conn.commit()
@@ -391,7 +357,7 @@ class ReactionRoles(commands.Cog):
     @rr.command(name="list", description="List all reaction role panels in this server")
     @app_commands.default_permissions(manage_roles=True)
     async def rr_list(self, interaction: discord.Interaction):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT id, title, mode, exclusive, channel_id, message_id FROM serenity_rr_panels WHERE guild_id=%s", (str(interaction.guild_id),))
         panels = c.fetchall()
@@ -436,7 +402,7 @@ class ReactionRoles(commands.Cog):
             except:
                 pass
 
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM serenity_rr_entries WHERE panel_id=%s", (panel_id,))
         c.execute("DELETE FROM serenity_rr_panels WHERE id=%s", (panel_id,))
@@ -462,7 +428,7 @@ class ReactionRoles(commands.Cog):
         new_desc = description if description is not None else old_desc
         new_excl = int(exclusive) if exclusive is not None else old_excl
 
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("UPDATE serenity_rr_panels SET title=%s, description=%s, exclusive=%s WHERE id=%s", (new_title, new_desc, new_excl, panel_id))
         conn.commit()

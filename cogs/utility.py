@@ -3,14 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import mysql.connector
 
-def get_db():
-    return mysql.connector.connect(
-        host="13.212.150.216",
-        port=3306,
-        user="simpleprog",
-        password="jf83hj032fjkldsa",
-        database="simpleprog_db"
-    )
+
 
 # ──────────────────────────────────────────────
 # Modals
@@ -62,31 +55,12 @@ class StickyCreateModal(discord.ui.Modal, title="Configure Sticky Message"):
 class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # {channel_id: message_count_since_last_refresh}
         self.msg_counter: dict[int, int] = {}
-        self.setup_db()
-
-    def setup_db(self):
-        conn = get_db()
-        c = conn.cursor()
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_stickies (
-            channel_id VARCHAR(255) PRIMARY KEY,
-            guild_id   VARCHAR(255),
-            title      TEXT,
-            content    TEXT,
-            message_id VARCHAR(255),
-            enabled    INT DEFAULT 1,
-            cooldown   INT DEFAULT 1,
-            is_embed   INT DEFAULT 1
-        )''')
-
-        conn.commit()
-        conn.close()
+        self._last_post = {}
 
     # ── DB helpers ──────────────────────────────
     def create_or_update_sticky(self, guild_id, channel_id, title, content, is_embed=True):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT INTO serenity_stickies (guild_id, channel_id, title, content, is_embed) VALUES (%s, %s, %s, %s, %s) "
@@ -97,7 +71,7 @@ class Utility(commands.Cog):
         conn.close()
 
     def get_sticky(self, channel_id) -> dict | None:
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT channel_id, guild_id, title, content, message_id, enabled, cooldown, is_embed FROM serenity_stickies WHERE channel_id=%s",
                   (str(channel_id),))
@@ -106,7 +80,7 @@ class Utility(commands.Cog):
         return self._row_to_dict(row) if row else None
 
     def get_guild_stickies(self, guild_id) -> list[dict]:
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT channel_id, guild_id, title, content, message_id, enabled, cooldown, is_embed FROM serenity_stickies WHERE guild_id=%s",
                   (str(guild_id),))
@@ -115,28 +89,28 @@ class Utility(commands.Cog):
         return [self._row_to_dict(r) for r in rows]
 
     def set_sticky_enabled(self, channel_id, enabled: bool):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("UPDATE serenity_stickies SET enabled=%s WHERE channel_id=%s", (int(enabled), str(channel_id)))
         conn.commit()
         conn.close()
 
     def set_sticky_cooldown(self, channel_id, cooldown: int):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("UPDATE serenity_stickies SET cooldown=%s WHERE channel_id=%s", (cooldown, str(channel_id)))
         conn.commit()
         conn.close()
 
     def set_sticky_message_id(self, channel_id, message_id):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("UPDATE serenity_stickies SET message_id=%s WHERE channel_id=%s", (str(message_id), str(channel_id)))
         conn.commit()
         conn.close()
 
     def delete_sticky(self, channel_id):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM serenity_stickies WHERE channel_id=%s", (str(channel_id),))
         conn.commit()

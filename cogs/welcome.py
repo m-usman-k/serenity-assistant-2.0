@@ -4,14 +4,7 @@ from discord import app_commands
 import mysql.connector
 from datetime import datetime, timezone
 
-def get_db():
-    return mysql.connector.connect(
-        host="13.212.150.216",
-        port=3306,
-        user="simpleprog",
-        password="jf83hj032fjkldsa",
-        database="simpleprog_db"
-    )
+
 
 # ──────────────────────────────────────────────
 # Supported variables (shown in modal placeholder)
@@ -116,19 +109,9 @@ class GoodbyeMessageModal(discord.ui.Modal, title="Configure Goodbye Message"):
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.setup_db()
-
-    def setup_db(self):
-        conn = get_db()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS serenity_config 
-                     (guild_id VARCHAR(255), config_key VARCHAR(255), config_value TEXT, 
-                     PRIMARY KEY (guild_id, config_key))''')
-        conn.commit()
-        conn.close()
 
     def get_config(self, guild_id, key):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("SELECT config_value FROM serenity_config WHERE guild_id=%s AND config_key=%s", (str(guild_id), key))
         result = c.fetchone()
@@ -136,7 +119,7 @@ class Welcome(commands.Cog):
         return result[0] if result else None
 
     def set_config(self, guild_id, key, value):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("REPLACE INTO serenity_config (guild_id, config_key, config_value) VALUES (%s, %s, %s)",
                   (str(guild_id), key, str(value)))
@@ -357,7 +340,7 @@ class Welcome(commands.Cog):
         app_commands.Choice(name="Goodbye", value="goodbye_channel"),
     ])
     async def disable(self, interaction: discord.Interaction, type: app_commands.Choice[str]):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM serenity_config WHERE guild_id=%s AND config_key=%s", (str(interaction.guild_id), type.value))
         conn.commit()
@@ -410,7 +393,7 @@ class Welcome(commands.Cog):
         app_commands.Choice(name="Goodbye", value="goodbye_bg_path"),
     ])
     async def reset_background(self, interaction: discord.Interaction, type: app_commands.Choice[str]):
-        conn = get_db()
+        conn = self.bot.db.get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM serenity_config WHERE guild_id=%s AND config_key=%s", (str(interaction.guild_id), type.value))
         conn.commit()
